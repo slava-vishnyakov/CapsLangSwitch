@@ -2,6 +2,7 @@ import Cocoa
 import Carbon
 import Carbon.HIToolbox.TextInputSources
 import ServiceManagement   // Added import for SMAppService
+import ApplicationServices // Explicitly import for AXIsProcessTrusted()
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -47,9 +48,20 @@ class KeyHandler {
     private var eventTapPollingTimer: Timer?
     // Ensure privacy settings are opened only once.
     private var openedPrivacySettings = false
+    // Timer to poll for accessibility trust status.
+    private var trustCheckTimer: Timer?
+    // Flag to indicate if accessibility permission has been granted.
+    private var permissionEverGranted = false
     
     init() {
         tryToCreateEventTap()
+        // Start trust check timer: once permission is granted, detect if it's revoked and cleanup.
+        trustCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true, block: { [weak self] _ in
+            guard let self = self else { return }
+            if self.permissionEverGranted && !AXIsProcessTrusted() {
+                self.cleanupAndQuit()
+            }
+        })
     }
     
     private let eventCallback: CGEventTapCallBack = { proxy, type, event, refcon in
@@ -59,6 +71,12 @@ class KeyHandler {
     }
     
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Detect if the event tap was disabled due to permission or timeout issues.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            cleanupAndQuit()
+            return nil
+        }
+
         if type == .flagsChanged {
             let keycode = event.getIntegerValueField(.keyboardEventKeycode)
             if keycode == 57 {
@@ -143,6 +161,7 @@ class KeyHandler {
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) {
             self.eventTap = eventTap
+            self.permissionEverGranted = true
             let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
             CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
             CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -160,6 +179,31 @@ class KeyHandler {
                     self?.tryToCreateEventTap()
                 })
             }
+        }
+    }
+    
+    /// Cleans up event listening, shows an alert about revoked permission, and quits the app.
+    private func cleanupAndQuit() {
+        // Invalidate the polling timers, if any.
+        eventTapPollingTimer?.invalidate()
+        eventTapPollingTimer = nil
+        trustCheckTimer?.invalidate()
+        trustCheckTimer = nil
+
+        // Disable the event tap if it's active.
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            eventTap = nil
+        }
+
+        // Show an alert on the main thread and then quit the application.
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Revoked"
+            alert.informativeText = "Accessibility permission has been revoked. CapsLangSwitch will now quit."
+            alert.alertStyle = .critical
+            alert.runModal()
+            NSApplication.shared.terminate(nil)
         }
     }
 }
