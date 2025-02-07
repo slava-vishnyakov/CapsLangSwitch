@@ -1,12 +1,23 @@
 import Cocoa
 import Carbon
 import Carbon.HIToolbox.TextInputSources
+import ServiceManagement   // Added import for SMAppService
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var keyHandler: KeyHandler!
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Register the app to launch on login (macOS 13+)
+        if #available(macOS 13.0, *) {
+            do {
+                try SMAppService.mainApp.register()
+                print("App registered as login item successfully.")
+            } catch {
+                print("Failed to register app as login item: \(error)")
+            }
+        }
+        
         // Create the status item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
@@ -14,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Language Switcher")
         }
-        
+
         // Create the menu
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "CapsLock Language Switcher", action: nil, keyEquivalent: ""))
