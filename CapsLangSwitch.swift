@@ -43,35 +43,13 @@ class KeyHandler {
     private var eventTap: CFMachPort?
     // Track CapsLock state to avoid repeated triggers.
     private var capsLockActive = false
+    // Timer to poll for event tap creation if permissions are missing.
+    private var eventTapPollingTimer: Timer?
+    // Ensure privacy settings are opened only once.
+    private var openedPrivacySettings = false
     
     init() {
-        let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
-        
-        guard let eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: eventCallback,
-            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        ) else {
-            print("""
-            Failed to create event tap.
-
-            This often happens if your app (or Terminal, if running via "swift CapsLangSwitch.swift") 
-            is not allowed to monitor input events.
-
-            Opening System Settings for you now...
-            """)
-            openPrivacySettings()
-            return
-        }
-        
-        self.eventTap = eventTap
-        
-        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+        tryToCreateEventTap()
     }
     
     private let eventCallback: CGEventTapCallBack = { proxy, type, event, refcon in
@@ -140,22 +118,48 @@ class KeyHandler {
     
     // Add a helper to open Privacy & Security → Input Monitoring / Accessibility using URL schemes
     private func openPrivacySettings() {
-        // First, open Input Monitoring preferences using URL scheme
-        if let inputMonitoringURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_InputMonitoring") {
-            NSWorkspace.shared.open(inputMonitoringURL)
-        } else {
-            print("Failed to create URL for Input Monitoring preferences")
-        }
-
-        // Wait for the user to press Enter before opening Accessibility preferences
-        print("Press Enter to open Accessibility preferences.")
-        _ = readLine()
-
         // Then, open Accessibility preferences using URL scheme
         if let accessibilityURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(accessibilityURL)
         } else {
             print("Failed to create URL for Accessibility preferences")
+        }
+    }
+    
+    /// Attempts to create and register the event tap.
+    /// If creation fails (likely due to missing permissions), it opens the System Settings
+    /// (once) and starts a polling timer until the event tap can be created.
+    private func tryToCreateEventTap() {
+        let eventMask = (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+        
+        if let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: eventCallback,
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        ) {
+            self.eventTap = eventTap
+            let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+            eventTapPollingTimer?.invalidate()
+            eventTapPollingTimer = nil
+            print("Successfully created event tap.")
+        } else {
+            print("Failed to create event tap. Possibly due to missing permissions.")
+            if !openedPrivacySettings {
+                openPrivacySettings()
+                openedPrivacySettings = true
+            }
+            if eventTapPollingTimer == nil {
+                eventTapPollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true, block: { [weak self] _ in
+                    self?.tryToCreateEventTap()
+                })
+            }
         }
     }
 }
