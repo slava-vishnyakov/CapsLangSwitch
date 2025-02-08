@@ -17,7 +17,7 @@ Works for me, all that I can say.
 ## How to build and run
 
 ```bash
-git clone https://github.com/slava-vishniakov/CapsLangSwitch
+git clone https://github.com/slava-vishnyakov/CapsLangSwitch
 cd CapsLangSwitch
 ./build.sh
 mv CapsLangSwitch.app /Applications/
