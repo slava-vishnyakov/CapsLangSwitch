@@ -16,13 +16,13 @@ Works for me, all that I can say.
 
 ## How to build and run
 
+You probably need Xcode CLI tools to build it. Install them with `xcode-select --install`.
+
 ```bash
 git clone https://github.com/slava-vishnyakov/CapsLangSwitch
 cd CapsLangSwitch
 ./build.sh
 mv CapsLangSwitch.app /Applications/
 ```
-
-You probably need Xcode CLI tools to build it. Install them with `xcode-select --install`.
 
 Then run Caps Lang Switch from Applications, give it the Accessibility permission (it will open System Preferences for you), and enjoy!
