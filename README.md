@@ -1,3 +1,5 @@
+# Use Caps Lock to switch input language on macOS more reliably than System Settings
+
 This is a simple macOS application that allows you to switch the input language of your Mac using the Caps Lock key on Key Down event, so it works more reliably.
 
 The problem with System Setting ("Keyboard Modifiers") is that it's working on Caps Lock being released, which means that if you are too fast and press Caps Lock with another key, it will not work. Sometimes it won't work even if you press Caps Lock correctly. No idea how it works.
